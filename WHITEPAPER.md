@@ -107,7 +107,7 @@ CartoQuantum Objects are:
 
 This allows fully self-contained links such as:
 
-https://cartoquantum.com/hash/eJwrSS0uUUhKLS5RslIqzy/KSVEEABsHAfc=
+https://cartoquantum.com/hash/eJwrSS0uUUhKLS5RslIqzy/KSVEEABsHAfc=](http://localhost:4321/hash/eJxNj0FuAjEMRa-CvE4XVANTzY6uumaLEDKJRdNm7JA4oyI0h-EsXKzJbNqlv977X74D8URBIsFwh5hExUqAASwmlWtB1jKCgYlS9sIwrE01rDjPl0rFgJ7PmGnbVcjnXMidUCvWb9bda__W9bMBOX-R1Tbw7dlVjUWp8lYkudxy9SP9lwwkuix7sNu_vO8WmJV-9M_Gop-S6o0sfBulZGhbsRYejgYi3oKga-2Lyk39kICrsbCT1fKgLc8Hq7cC8zz_An1FWYk
 
 
 No server storage is required to decode and interpret the object.
