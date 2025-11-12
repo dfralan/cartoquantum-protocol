@@ -1,0 +1,21 @@
+# Node / Astro
+node_modules/
+.astro/
+dist/
+.env
+.vercel/
+.output/
+
+# Rust
+target/
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Temporary
+tmp/
