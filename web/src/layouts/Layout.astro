@@ -1,0 +1,81 @@
+---
+import "../styles/global.css";
+
+interface Props {
+	description: string;
+	title: string;
+	image: string;
+	customClass?: string;
+	meta?: { [key: string]: string }[];
+	hideHeader?: boolean;
+	hideFooter?: boolean;
+}
+
+const customMeta = Astro.props.meta || [{ charset: "UTF-8" }];
+const { description, title, image, customClass, hideHeader, hideFooter } =
+	Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		{customMeta.map((meta) => <meta {...meta} />)}
+
+		<!-- Global Metadata -->
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href={image} />
+		<meta name="generator" content={Astro.generator} />
+
+		<!-- Canonical URL -->
+		<link rel="canonical" href={""} />
+
+		<!-- Primary Meta Tags -->
+		<title>{title}</title>
+		<meta name="title" content={title} />
+		<meta name="description" content={description} />
+
+		<!-- Open Graph / Facebook -->
+		<meta name="type" property="og:type" content="website" />
+		<meta name="url" property="og:url" content={Astro.url} />
+		<meta name="title" property="og:title" content={title} />
+		<meta
+			name="description"
+			property="og:description"
+			content={description}
+		/>
+		<meta name="image" property="og:image" content={image} />
+
+		<!-- Twitter Meta Tags -->
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta property="twitter:domain" content={Astro.url} />
+		<meta property="twitter:url" content={Astro.url} />
+		<meta name="twitter:title" content={title} />
+		<meta name="twitter:description" content={description} />
+		<meta property="twitter:image" content={image} />
+
+		<!-- Google / Search Engine Tags -->
+		<meta itemprop="name" content={title} />
+		<meta itemprop="description" content={description} />
+		<meta itemprop="image" content={image} />
+
+		<!-- Google Fonts -->
+        <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+	</head>
+
+	
+
+	<body class:list={[ "font-mono bg-white", customClass ]}>
+		<slot />
+	</body>
+
+	<!-- Google tag (gtag.js) -->
+    <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-EKHPCHR0C9"></script>
+    <script is:inline>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-EKHPCHR0C9');
+    </script>
+</html>

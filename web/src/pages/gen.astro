@@ -1,19 +1,14 @@
 ---
-import "../styles/global.css";
+import Layout from '@/layouts/Layout.astro';
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width" />
-    <meta name="generator" content={Astro.generator} />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Generador de Links CartoQuantum</title>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet">
-  </head>
+<Layout
+	title="CartoQuantum Link Generator"
+	description="Encode and share ephemeral, self-contained objects with cartographic algebra. Decentralized. Compressed. Untraceable."
+	image='/favicon.svg'
+	>
 
-<body class="font-mono px-4 py-10 flex flex-col items-center bg-white min-h-screen">
+<main class="font-mono px-4 py-10 flex flex-col items-center bg-white min-h-screen">
 
     <h1 class="text-3xl md:text-4xl font-bold mb-6 text-center">
       Generador de Links CartoQuantum
@@ -86,8 +81,8 @@ import "../styles/global.css";
 
     <div id="output" class="mt-6 max-w-xl w-full"></div>
 
-  </body>
-</html>
+    </main>
+</Layout>
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script is:inline>
   console.log("CartoQuantum Generator Script Loaded!");

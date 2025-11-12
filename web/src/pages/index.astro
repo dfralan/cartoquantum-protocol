@@ -1,20 +1,12 @@
 ---
-
-import "../styles/global.css";
+import Layout from '@/layouts/Layout.astro';
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CartoQuantum Protocol</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet">
-
-	</head>
-	<body class="font-mono">
+<Layout
+	title="CartoQuantum Protocol"
+	description="Encode and share ephemeral, self-contained objects with cartographic algebra. Decentralized. Compressed. Untraceable."
+	image='/favicon.svg'
+	>
     <main class="flex flex-col items-center justify-center min-h-screen px-4">
       <h1 class="text-4xl md:text-6xl font-bold mb-4 text-center">
         CartoQuantum Protocol
@@ -31,5 +23,4 @@ import "../styles/global.css";
         </a>
       </div>
     </main>
-  </body>
-</html>
+</Layout>

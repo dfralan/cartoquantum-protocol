@@ -1,4 +1,5 @@
 ---
+import Layout from '@/layouts/Layout.astro';
 import "../../styles/global.css";
 import pako from 'pako';
 
@@ -8,7 +9,7 @@ import pako from 'pako';
 // Y en tu archivo `astro.config.mjs` podrías necesitar configurar `vite.optimizeDeps.exclude` para que no intente pre-bundearlos en SSR si dan problemas.
 // Por ahora, los usaremos en el <script client:only> si la verificación es client-side.
 
-// Si haces la verificación en el servidor (SSR), necesitarás estas librerías para Node.js
+// Si haces la verificación en el servidor (SSR), necesitamos estas librerías para Node.js
 // Para Ethereum: @noble/hashes, @noble/secp256k1, @ethereumjs/util
 // Para Nostr: @noble/hashes, @noble/secp256k1 (o nostr-tools que los envuelve)
 // Pero esto complica mucho el build de Astro. Vamos a mantener la verificación como conceptual en SSR
@@ -153,18 +154,11 @@ const title = error ? 'Error de Decodificación' : (decodedObject?.object?.kind 
 const description = error ? error : (decodedObject?.object?.payload?.content ?? 'Visor de objetos CartoQuantum');
 ---
 
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{title}</title>
-
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet">
-    <meta name="description" content={description} />
-    <meta property="og:title" content={title} />
-    <meta property="og:description" content={description} />
-</head>
+<Layout
+	title={title}
+	description={description}
+	image='/favicon.svg'
+	>
 <body class="font-mono px-4 py-10 flex flex-col items-center bg-white min-h-screen">
     <main class="max-w-3xl mx-auto w-full"> {error ? (
         <div class="bg-red-100 text-red-800 p-6 rounded-lg border border-red-300 shadow-md">
@@ -221,4 +215,5 @@ const description = error ? error : (decodedObject?.object?.payload?.content ?? 
       )}
     </main>
   </body>
+</Layout>
 </html>
