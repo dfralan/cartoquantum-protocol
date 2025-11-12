@@ -1,0 +1,10 @@
+{
+  "protocol": "cartoquantum",
+  "version": 1,
+  "encoding": "lzma+aes256+x25519",
+  "pk_sender": "0000000000000000000000000000000000000000000000000000000000000000",
+  "pk_recipient": "0000000000000000000000000000000000000000000000000000000000000000",
+  "issued_at": 0,
+  "sig": null,
+  "payload": "j7kt2VWv3/s9WtjWgelnLHYafRP8gibnUXUizxWqV+kLLYv8zWl7gzlA7qlm5bOZJpDR25Ri0bHZj3x7wUqFK43fgflkZTMdFbgFxUwmYwOtKKnKyoilF3uF8cuOVri1Ai7O8XG7UoYj0orUyH5oH2OdPEGtbJ6eKEf9NIliezJEVVRoJmh5S0kK2w7+CcGSoLCgZne9JEWBMgQgTCwPAjOlzgm7nbixsuwpSlz2QQmk78c4cnztxsyAnhd2niHiGeG4vjPEIpLtRLg900/H8m9s9MLW6xlWyTp1nWNqyAMotGs9a1TRW+2A4wDRgvS3jwRozoGXwPj/pKaR1RIzlG+N"
+}

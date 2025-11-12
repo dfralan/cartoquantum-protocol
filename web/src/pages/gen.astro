@@ -1,0 +1,439 @@
+---
+import "../styles/global.css";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Generador de Links CartoQuantum</title>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+  </head>
+
+<body class="font-mono px-4 py-10 flex flex-col items-center bg-white min-h-screen">
+
+    <h1 class="text-3xl md:text-4xl font-bold mb-6 text-center">
+      Generador de Links CartoQuantum
+    </h1>
+
+    <div class="mb-4 flex flex-col sm:flex-row gap-4">
+      <button id="connect-metamask" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition">
+        Conectar MetaMask
+      </button>
+      <button id="connect-nostr" class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition">
+        Conectar Nostr (Alby/Nos2x)
+      </button>
+      <p id="metamask-status" class="mt-2 text-sm text-gray-700"></p>
+      <p id="nostr-status" class="mt-2 text-sm text-gray-700"></p>
+    </div>
+
+    <form id="cq-form" class="flex flex-col gap-4 w-full max-w-xl">
+      <label class="flex flex-col gap-1">
+        <span class="text-sm uppercase tracking-wide">ID de Objeto (opcional, se genera si vacío):</span>
+        <input id="object-id" type="text" placeholder="Ej: mi-documento-unico-123" class="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-900" />
+      </label>
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm uppercase tracking-wide">Tipo (kind):</span>
+        <input id="kind" type="text" value="note" class="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-900" />
+      </label>
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm uppercase tracking-wide">Tipo de Autor:</span>
+        <select id="author-type" class="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-900">
+          <option value="anonymous">Anónimo (Sin Firma)</option>
+          <option value="ethereum">Ethereum (MetaMask)</option>
+          <option value="nostr">Nostr (npub)</option>
+        </select>
+      </label>
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm uppercase tracking-wide">Autor (ID - Se rellena con conexión):</span>
+        <input id="author" type="text" placeholder="Ej: 0xAbC...123 o npub1..." class="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-900" />
+      </label>
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm uppercase tracking-wide">Operadores (ops) - JSON Array (ej: ["⊕canal-dev", "⊖old-id", "✍️sig"]):</span>
+        <textarea id="ops" rows="3" placeholder='["ejemplo-op", "otro-op", "✍️sig"] - ¡Usa comillas dobles para las cadenas!' class="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-900"></textarea>
+      </label>
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm uppercase tracking-wide">Contenido:</span>
+        <textarea id="content" rows="5" class="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-gray-900"></textarea>
+      </label>
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm uppercase tracking-wide">Tipo de Codificación (encoding):</span>
+        <select id="encoding" class="px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-900">
+          <option value="deflate+base64url">deflate+base64url (Recomendado para eficiencia)</option>
+          <option value="plainbase64url">plainbase64url (Para contenido muy pequeño o máxima simplicidad)</option>
+        </select>
+      </label>
+
+      <label class="flex flex-col gap-1">
+        <span class="text-sm uppercase tracking-wide">Firma (sig) - Generado automáticamente si se conecta:</span>
+        <input id="signature" type="text" placeholder="Se rellenará automáticamente si firmas" class="px-3 py-2 border border-gray-300 rounded bg-gray-50 focus:outline-none" readonly />
+        <p class="text-xs text-gray-500 mt-1">Esta es la prueba criptográfica de que el Autor firmó el Objeto.</p>
+      </label>
+
+      <button type="submit" class="mt-2 px-4 py-2 bg-black text-white rounded hover:bg-gray-800 transition">
+        Generar Link
+      </button>
+    </form>
+
+    <div id="output" class="mt-6 max-w-xl w-full"></div>
+
+  </body>
+</html>
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<script is:inline>
+  console.log("CartoQuantum Generator Script Loaded!");
+
+  let currentEthAccount = null; // Renamed to clarify
+  let currentNostrPubkey = null; // New variable for Nostr
+  let currentAuthorType = 'anonymous'; // Keep track of selected author type
+
+  // --- Utility Functions ---
+  function uint8ToBase64url(uint8Array) {
+    let base64 = btoa(String.fromCharCode(...uint8Array));
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function encodeCartoQuantumObject(obj) {
+    const jsonString = JSON.stringify(obj, null, 0);
+    const jsonBytes = new TextEncoder().encode(jsonString);
+
+    const encoding = obj.envelope.encoding;
+    let encodedData;
+    if (encoding === "deflate+base64url") {
+      const compressed = pako.deflate(jsonBytes, { level: 9 });
+      encodedData = uint8ToBase64url(compressed);
+    } else if (encoding === "plainbase64url") {
+      encodedData = uint8ToBase64url(jsonBytes);
+    } else {
+      throw new Error(`Unsupported encoding: ${encoding}`);
+    }
+    return encodedData;
+  }
+
+  // --- DOM Elements ---
+  const connectMetamaskButton = document.getElementById('connect-metamask');
+  const connectNostrButton = document.getElementById('connect-nostr'); // New Nostr button
+  const metamaskStatus = document.getElementById('metamask-status');
+  const nostrStatus = document.getElementById('nostr-status'); // New Nostr status
+  const authorTypeSelect = document.getElementById('author-type'); // New select for author type
+  const authorInput = document.getElementById('author');
+  const signatureInput = document.getElementById('signature');
+
+  // --- MetaMask Integration Logic ---
+  async function connectMetamask() {
+    if (typeof window.ethereum === 'undefined') {
+      metamaskStatus.textContent = 'MetaMask no está instalado. Instálalo para firmar.';
+      metamaskStatus.classList.remove('text-gray-700', 'text-green-600');
+      metamaskStatus.classList.add('text-red-500');
+      return;
+    }
+
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      currentEthAccount = accounts[0];
+      authorInput.value = currentEthAccount;
+      authorTypeSelect.value = 'ethereum'; // Select Ethereum type
+      metamaskStatus.textContent = `Conectado: ${currentEthAccount.substring(0, 6)}...${currentEthAccount.substring(currentEthAccount.length - 4)}`;
+      metamaskStatus.classList.remove('text-red-500', 'text-gray-700');
+      metamaskStatus.classList.add('text-green-600');
+      
+      // Clear Nostr status if connecting MetaMask
+      nostrStatus.textContent = ''; 
+      currentNostrPubkey = null;
+
+      window.ethereum.on('accountsChanged', handleEthAccountsChanged);
+    } catch (error) {
+      console.error("Error al conectar MetaMask:", error);
+      metamaskStatus.textContent = `Error al conectar: ${error.message || error}`;
+      metamaskStatus.classList.remove('text-gray-700', 'text-green-600');
+      metamaskStatus.classList.add('text-red-500');
+    }
+  }
+
+  function handleEthAccountsChanged(accounts) {
+    if (accounts.length === 0) {
+      currentEthAccount = null;
+      authorInput.value = '';
+      signatureInput.value = '';
+      metamaskStatus.textContent = 'Desconectado de MetaMask.';
+      metamaskStatus.classList.remove('text-green-600', 'text-red-500');
+      metamaskStatus.classList.add('text-gray-700');
+      if (authorTypeSelect.value === 'ethereum') authorTypeSelect.value = 'anonymous'; // Reset type if disconnected
+    } else if (accounts[0] !== currentEthAccount) {
+      currentEthAccount = accounts[0];
+      authorInput.value = currentEthAccount;
+      metamaskStatus.textContent = `Cuenta cambiada a: ${currentEthAccount.substring(0, 6)}...${currentEthAccount.substring(currentEthAccount.length - 4)}`;
+      metamaskStatus.classList.remove('text-red-500', 'text-gray-700');
+      metamaskStatus.classList.add('text-green-600');
+      signatureInput.value = ''; 
+    }
+  }
+
+  // --- Nostr Integration Logic ---
+  async function connectNostr() {
+    if (typeof window.nostr === 'undefined') {
+      nostrStatus.textContent = 'Extensión Nostr (Alby/Nos2x) no encontrada. Instálala.';
+      nostrStatus.classList.remove('text-gray-700', 'text-green-600');
+      nostrStatus.classList.add('text-red-500');
+      return;
+    }
+
+    try {
+      const pubkey = await window.nostr.getPublicKey();
+      currentNostrPubkey = `npub1${pubkey}`; // Nostr public key in npub format
+      authorInput.value = currentNostrPubkey;
+      authorTypeSelect.value = 'nostr'; // Select Nostr type
+      nostrStatus.textContent = `Conectado: ${currentNostrPubkey.substring(0, 10)}...${currentNostrPubkey.substring(currentNostrPubkey.length - 4)}`;
+      nostrStatus.classList.remove('text-red-500', 'text-gray-700');
+      nostrStatus.classList.add('text-green-600');
+
+      // Clear MetaMask status if connecting Nostr
+      metamaskStatus.textContent = '';
+      currentEthAccount = null;
+
+      // Note: Nostr extensions typically don't have an 'accountsChanged' event like MetaMask.
+      // You might need to add a periodic check or rely on user re-connecting.
+    } catch (error) {
+      console.error("Error al conectar Nostr:", error);
+      nostrStatus.textContent = `Error al conectar: ${error.message || error}`;
+      nostrStatus.classList.remove('text-gray-700', 'text-green-600');
+      nostrStatus.classList.add('text-red-500');
+    }
+  }
+
+  // --- Event Listeners for Connect Buttons ---
+  if (connectMetamaskButton) connectMetamaskButton.addEventListener('click', connectMetamask);
+  if (connectNostrButton) connectNostrButton.addEventListener('click', connectNostr); // Attach Nostr button listener
+
+  // Handle author type selection change
+  if (authorTypeSelect) {
+    authorTypeSelect.addEventListener('change', () => {
+      currentAuthorType = authorTypeSelect.value;
+      authorInput.value = ''; // Clear author field when type changes
+      signatureInput.value = ''; // Clear signature
+      if (currentAuthorType === 'ethereum' && currentEthAccount) {
+        authorInput.value = currentEthAccount;
+      } else if (currentAuthorType === 'nostr' && currentNostrPubkey) {
+        authorInput.value = currentNostrPubkey;
+      } else if (currentAuthorType === 'anonymous') {
+        authorInput.value = 'anonymous'; // Explicitly set to anonymous
+      }
+    });
+  }
+
+
+  // Initial checks
+  if (typeof window.ethereum !== 'undefined') {
+      window.ethereum.request({ method: 'eth_accounts' })
+          .then(handleEthAccountsChanged)
+          .catch(err => console.error("Could not get ETH accounts on load", err));
+  }
+  // No initial check for Nostr pubkey as there's no standard `getAccounts` for it.
+  // User will need to click "Connect Nostr".
+
+
+  // --- Form Submission Logic ---
+  const form = document.getElementById('cq-form');
+  const outputDiv = document.getElementById('output');
+
+  if (form) {
+    console.log("Form with ID 'cq-form' found. Attaching event listener.");
+    form.addEventListener('submit', async (event) => {
+      console.log("Submit event fired!");
+      event.preventDefault();
+
+      const kindInput = document.getElementById('kind');
+      const contentInput = document.getElementById('content');
+      const encodingSelect = document.getElementById('encoding');
+      const opsInput = document.getElementById('ops');
+      const idInput = document.getElementById('object-id');
+      
+      if (!kindInput || !contentInput || !outputDiv || !encodingSelect || !opsInput || !idInput || !authorInput || !signatureInput || !authorTypeSelect) {
+        console.error('Missing form elements in submit handler. Please ensure all IDs are correct.');
+        outputDiv.innerHTML = '<p class="text-red-500">Error interno: No se encontraron todos los elementos del formulario.</p>';
+        return;
+      }
+
+      const kind = kindInput.value.trim();
+      const content = contentInput.value.trim();
+      const selectedEncoding = encodingSelect.value;
+      const objectId = idInput.value.trim() || `cq-obj-${Math.random().toString(36).substring(2, 11)}`;
+      let author = authorInput.value.trim();
+      let selectedAuthorType = authorTypeSelect.value; // Get the selected author type
+
+      // Ensure author field matches connected wallet if type is set
+      if (selectedAuthorType === 'ethereum' && currentEthAccount && author.toLowerCase() !== currentEthAccount.toLowerCase()) {
+          author = currentEthAccount;
+          authorInput.value = currentEthAccount; // Update field if out of sync
+      } else if (selectedAuthorType === 'nostr' && currentNostrPubkey && author.toLowerCase() !== currentNostrPubkey.toLowerCase()) {
+          author = currentNostrPubkey;
+          authorInput.value = currentNostrPubkey; // Update field
+      } else if (selectedAuthorType === 'anonymous') {
+          author = 'anonymous';
+          authorInput.value = 'anonymous';
+      }
+
+      let ops = [];
+      try {
+          if (opsInput.value.trim()) {
+              ops = JSON.parse(opsInput.value.trim());
+              if (!Array.isArray(ops)) {
+                  throw new Error("Operators (ops) must be a JSON array.");
+              }
+          }
+      } catch (e) {
+          outputDiv.innerHTML = `<p class="text-red-500">Error en Operadores (ops): ${e.message}</p>`;
+          return;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+
+      const objectToSign = {
+          id: objectId,
+          kind,
+          coords: {
+              time: now,
+              region: 'AR-ROS',
+              context: kind,
+              author: author, // Author field can be ETH address or npub
+              author_type: selectedAuthorType // IMPORTANT: Store author type in coords for verification
+          },
+          ops: ops,
+          payload: { content }
+      };
+
+      let signature = '';
+      let signingError = false;
+
+      // --- Conditional Signing Logic ---
+      if (selectedAuthorType === 'ethereum' && author && author.toLowerCase() !== 'anonymous' && currentEthAccount && author.toLowerCase() === currentEthAccount.toLowerCase()) {
+        outputDiv.innerHTML = `<p class="text-yellow-600 flex items-center justify-center">
+                                  <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  Esperando tu firma en MetaMask...
+                               </p>`;
+        try {
+          const msg = JSON.stringify(objectToSign);
+          signature = await window.ethereum.request({
+            method: 'personal_sign',
+            params: [msg, currentEthAccount],
+          });
+        } catch (error) {
+          console.error("Error al firmar con MetaMask:", error);
+          outputDiv.innerHTML = `<p class="text-red-500">Error al firmar con MetaMask: ${error.message || error}. Asegúrate de que el 'Autor' es tu dirección conectada y aprobaste la firma.</p>`;
+          signingError = true;
+        }
+      } else if (selectedAuthorType === 'nostr' && author && author.toLowerCase() !== 'anonymous' && currentNostrPubkey && author.toLowerCase() === currentNostrPubkey.toLowerCase()) {
+        outputDiv.innerHTML = `<p class="text-yellow-600 flex items-center justify-center">
+                                  <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-yellow-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  Esperando tu firma en la extensión Nostr...
+                               </p>`;
+        try {
+            // Nostr signing works with a Nostr event structure
+            const event = {
+                kind: 1, // Generic text note (though we're signing a CQ object, this is the NIP-01 event kind)
+                pubkey: currentNostrPubkey.substring(5), // Remove 'npub1' prefix for direct pubkey
+                created_at: now,
+                tags: [],
+                content: JSON.stringify(objectToSign) // Sign the entire CQ object as content
+            };
+            const signedEvent = await window.nostr.signEvent(event);
+            signature = signedEvent.sig; // Get the signature from the signed event
+        } catch (error) {
+            console.error("Error al firmar con Nostr:", error);
+            outputDiv.innerHTML = `<p class="text-red-500">Error al firmar con Nostr: ${error.message || error}. Asegúrate de que el 'Autor' es tu clave pública conectada y aprobaste la firma.</p>`;
+            signingError = true;
+        }
+      } else {
+          // No signing needed or invalid configuration
+          signatureInput.value = '';
+      }
+
+      if (signingError) {
+          signatureInput.value = ''; // Clear signature on error
+          return; // Stop execution if signing failed
+      }
+      signatureInput.value = signature; // Display the signature
+
+      // Now construct the full CartoQuantum object including the envelope and (optional) signature
+      const finalCartoQuantumObject = {
+        envelope: {
+          protocol: 'cartoquantum',
+          version: 1,
+          encoding: selectedEncoding,
+          issued_at: now,
+          sig: signature // Include the generated signature (will be empty if not signed)
+        },
+        object: objectToSign // Use the object that was potentially signed
+      };
+
+      try {
+        const encoded = encodeCartoQuantumObject(finalCartoQuantumObject);
+        const link = `${window.location.origin}/hash/${encoded}`;
+        
+        outputDiv.innerHTML = `
+          <div class="bg-gray-50 border border-gray-200 p-4 rounded-lg shadow-sm w-full animate-fade-in">
+              <p class="text-gray-700 text-sm mb-2">✨ ¡Objeto CartoQuantum listo! ✨</p>
+              <p class="text-gray-700 font-bold mb-2">JSON del Objeto:</p>
+              <pre class="bg-gray-100 p-3 rounded overflow-x-auto text-xs text-gray-800 mb-4 whitespace-pre-wrap">${JSON.stringify(finalCartoQuantumObject, null, 2)}</pre>
+              
+              <p class="text-gray-700 font-bold mb-2">Link CartoQuantum:</p>
+              <div class="flex items-center space-x-2 mb-4">
+                  <a id="generated-link" href="${link}" target="_blank" rel="noopener noreferrer" class="flex-grow text-blue-600 hover:underline break-all text-sm font-medium px-2 py-1 bg-blue-50 rounded-md transition-colors duration-200">
+                      ${link}
+                  </a>
+                  <button id="copy-link-btn" class="px-3 py-1 bg-blue-500 text-white rounded-md text-sm hover:bg-blue-600 transition-colors duration-200">
+                      Copiar
+                  </button>
+              </div>
+              <p class="text-gray-700 text-xs text-right">Longitud del link: ${link.length} caracteres</p>
+          </div>
+        `;
+
+        // Añadir funcionalidad de copiar
+        const copyButton = document.getElementById('copy-link-btn');
+        const generatedLinkElement = document.getElementById('generated-link');
+        if (copyButton && generatedLinkElement) {
+            copyButton.addEventListener('click', () => {
+                const tempInput = document.createElement('textarea');
+                tempInput.value = generatedLinkElement.href;
+                document.body.appendChild(tempInput);
+                tempInput.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempInput);
+
+                const originalText = copyButton.textContent;
+                copyButton.textContent = '¡Copiado!';
+                copyButton.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+                copyButton.classList.add('bg-green-500');
+                setTimeout(() => {
+                    copyButton.textContent = originalText;
+                    copyButton.classList.remove('bg-green-500');
+                    copyButton.classList.add('bg-blue-500', 'hover:bg-blue-600');
+                }, 1500);
+            });
+        }
+
+      } catch (e) {
+        outputDiv.innerHTML = `<p class="text-red-500">Error al generar el link: ${e.message}</p>`;
+        console.error("Encoding error:", e);
+      }
+    });
+  } else {
+    console.error("Form with ID 'cq-form' not found!");
+  }
+</script>

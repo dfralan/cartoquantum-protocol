@@ -1,0 +1,21 @@
+{
+  "name": "cartoquantum-astro",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.6.0",
+    "@tailwindcss/vite": "^4.1.11",
+    "astro": "^5.10.2",
+    "pako": "^2.1.0",
+    "tailwindcss": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/pako": "^2.0.3"
+  }
+}

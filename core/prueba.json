@@ -1,0 +1,14 @@
+{
+  "kind": "note",
+  "coords": {
+    "time": 1729342000,
+    "region": "AR-BA",
+    "context": "note",
+    "author": "npub1xyz..."
+  },
+  "ops": ["⊕channel123", "⊗v2"],
+  "expires": 1729345000,
+  "payload": {
+    "content": "Hola mundo cartocuántico"
+  }
+}

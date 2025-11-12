@@ -1,0 +1,224 @@
+---
+import "../../styles/global.css";
+import pako from 'pako';
+
+// --- NUEVO: Importar ethers (para verificación Ethereum) y nostr-tools (para verificación Nostr) ---
+// Estos imports son para el CLIENTE, por eso no causan problemas en el build de Astro.
+// Para Astro, necesitarías instalar: `npm install ethers nostr-tools`
+// Y en tu archivo `astro.config.mjs` podrías necesitar configurar `vite.optimizeDeps.exclude` para que no intente pre-bundearlos en SSR si dan problemas.
+// Por ahora, los usaremos en el <script client:only> si la verificación es client-side.
+
+// Si haces la verificación en el servidor (SSR), necesitarás estas librerías para Node.js
+// Para Ethereum: @noble/hashes, @noble/secp256k1, @ethereumjs/util
+// Para Nostr: @noble/hashes, @noble/secp256k1 (o nostr-tools que los envuelve)
+// Pero esto complica mucho el build de Astro. Vamos a mantener la verificación como conceptual en SSR
+// y si el usuario quiere co-firmar, eso sí será client-side.
+
+const { compressed } = Astro.params;
+
+// --- Utility Functions (Keep the same) ---
+function base64urlToUint8Array(base64url: string): Uint8Array {
+  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// NUEVO: Función para convertir Uint8Array a Base64url (necesaria para re-codificar después de añadir firma)
+function uint8ToBase64url(uint8Array: Uint8Array) {
+  let base64 = btoa(String.fromCharCode(...uint8Array));
+  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// NUEVO: Función para codificar un objeto CartoQuantum (adaptada para re-uso)
+function encodeCartoQuantumObject(obj: any): string {
+    const jsonString = JSON.stringify(obj, null, 0); // Compact JSON
+    const jsonBytes = new TextEncoder().encode(jsonString);
+
+    const encoding = obj.envelope.encoding;
+    let encodedData;
+    if (encoding === "deflate+base64url") {
+      const compressed = pako.deflate(jsonBytes, { level: 9 });
+      encodedData = uint8ToBase64url(compressed);
+    } else if (encoding === "plainbase64url") {
+      encodedData = uint8ToBase64url(jsonBytes);
+    } else {
+      throw new Error(`Unsupported encoding: ${encoding}`);
+    }
+    return encodedData;
+}
+
+
+let decodedObject: any = null;
+let interpretationResult: string[] = [];
+let error: string | null = null;
+let signatureStatus: 'valid' | 'invalid' | 'missing' | 'multiple' = 'missing'; // 'missing', 'valid', 'invalid', 'multiple'
+let canCoSign: boolean = false; // Flag to enable co-signing button
+
+try {
+  if (!compressed) {
+    throw new Error('No se proporcionó ningún hash para decodificar.');
+  }
+
+  const decodedBytes = base64urlToUint8Array(compressed);
+  let parsedJson: any = null;
+  
+  // Try deflate+base64url first
+  try {
+    const inflatedJsonStr = pako.inflate(decodedBytes, { to: 'string' });
+    parsedJson = JSON.parse(inflatedJsonStr);
+    if (!(parsedJson.envelope && parsedJson.envelope.encoding === 'deflate+base64url')) {
+        throw new Error('No es deflate+base64url, intentando plainbase64url...');
+    }
+  } catch (deflateError) {
+    // If deflate fails, try plainbase64url
+    try {
+      parsedJson = JSON.parse(new TextDecoder().decode(decodedBytes));
+      if (!(parsedJson.envelope && parsedJson.envelope.encoding === 'plainbase64url') && (parsedJson.envelope && parsedJson.envelope.encoding)) {
+          throw new Error(`Encoding no soportado o desconocido: ${parsedJson.envelope.encoding}`);
+      }
+      // If encoding is missing or not recognized, and it parses as plain JSON, assume plain.
+    } catch (plainError) {
+      throw new Error(`No se pudo decodificar el objeto (ni deflate+base64url ni plainbase64url). Detalles: ${(deflateError instanceof Error ? deflateError.message : '')} | ${(plainError instanceof Error ? plainError.message : '')}`);
+    }
+  }
+  
+  decodedObject = parsedJson;
+
+  // --- Protocol Validation ---
+  if (!decodedObject.envelope || decodedObject.envelope.protocol !== 'cartoquantum') {
+    throw new Error('Protocolo inválido o envelope ausente.');
+  }
+
+  if (decodedObject.envelope.version > 1) {
+    throw new Error(`Versión no soportada (se recibió ${decodedObject.envelope.version}, se soporta hasta 1).`);
+  }
+
+  if (decodedObject.object.expires && decodedObject.object.expires < Math.floor(Date.now() / 1000)) {
+    throw new Error('El objeto ha expirado.');
+  }
+
+  // --- Signature Status (for display only, real verification is complex) ---
+  const existingSig = decodedObject.envelope.sig;
+  if (Array.isArray(existingSig)) {
+      signatureStatus = 'multiple';
+      interpretationResult.push(`[VERIFICACIÓN] Múltiples firmas detectadas (${existingSig.length}).`);
+  } else if (typeof existingSig === 'string' && existingSig.length > 0) {
+      signatureStatus = 'valid'; // Assume valid for display if single and present
+      interpretationResult.push(`[VERIFICACIÓN] Una firma detectada. (Verificación criptográfica real requerida)`);
+  } else {
+      signatureStatus = 'missing';
+      interpretationResult.push('[VERIFICACIÓN] Objeto sin firmas.');
+  }
+
+  // --- CartoQuantum Interpreter Logic ---
+  interpretationResult.push(`--- Procesando Objeto: ${decodedObject.object.id} (Kind: ${decodedObject.object.kind}) ---`);
+  interpretationResult.push(`Operadores (ops): ${decodedObject.object.ops && decodedObject.object.ops.length > 0 ? JSON.stringify(decodedObject.object.ops) : 'Ninguno'}`);
+
+  const ops = decodedObject.object.ops || [];
+  
+  ops.forEach((op: string) => {
+    if (op.startsWith('⊖')) {
+      const target_id = op.substring(1);
+      interpretationResult.push(`[OPERADOR] ⊖ Invalidar Objeto: "${target_id}". Si el firmante está autorizado, este objeto anularía a "${target_id}".`);
+    } else if (op.startsWith('⊕')) {
+      const feed_id = op.substring(1);
+      interpretationResult.push(`[OPERADOR] ⊕ Añadir a Feed/Contexto: "${feed_id}". Este objeto intenta ser añadido a este feed.`);
+    } else if (op.startsWith('⊗')) {
+      const derivation_info = op.substring(1);
+      interpretationResult.push(`[OPERADOR] ⊗ Derivación/Versión: "${derivation_info}". Este objeto indica una relación de derivación o versión con "${derivation_info}".`);
+    } else if (op.startsWith('⊘')) {
+      const projection_feed = op.substring(1);
+      interpretationResult.push(`[OPERADOR] ⊘ Proyectar a Feed General: "${projection_feed}". Este objeto intenta ser proyectado a este feed general.`);
+    } else if (op === '✍️sig') { // NUEVO OPERADOR: PERMITIR CO-FIRMA
+        canCoSign = true;
+        interpretationResult.push(`[OPERADOR] ✍️sig - ¡Este objeto permite co-firmas! Puedes añadir tu firma.`);
+    }
+     else {
+      interpretationResult.push(`[OPERADOR] Operador Desconocido: "${op}".`);
+    }
+  });
+
+
+} catch (e) {
+  error = e instanceof Error ? e.message : 'Ocurrió un error desconocido durante la decodificación.';
+  console.error("Decoding/Processing Error:", e);
+}
+
+const title = error ? 'Error de Decodificación' : (decodedObject?.object?.kind ?? 'Objeto CartoQuantum');
+const description = error ? error : (decodedObject?.object?.payload?.content ?? 'Visor de objetos CartoQuantum');
+---
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{title}</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&display=swap" rel="stylesheet">
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+</head>
+<body class="font-mono px-4 py-10 flex flex-col items-center bg-white min-h-screen">
+    <main class="max-w-3xl mx-auto w-full"> {error ? (
+        <div class="bg-red-100 text-red-800 p-6 rounded-lg border border-red-300 shadow-md">
+          <h2 class="text-xl font-bold mb-2">Error al procesar el link</h2>
+          <p class="text-sm">{error}</p>
+        </div>
+      ) : (
+        <article class="bg-neutral-800 p-6 rounded-lg shadow-md border border-neutral-700 w-full animate-fade-in">
+          <h1 class="text-2xl text-blue-400 font-semibold mb-4">
+            Tipo de Objeto: {decodedObject.object.kind}
+          </h1>
+
+          <div class="mb-6 text-sm text-neutral-300 space-y-1">
+            <p><strong>Autor:</strong> {decodedObject.object.coords.author}
+              {signatureStatus === 'valid' && (
+                <span class="ml-2 text-green-400 text-xs">(Firma Detectada ✅)</span>
+              )}
+              {signatureStatus === 'valid' && decodedObject.envelope.sig && (
+                <span class="ml-2 text-yellow-400 text-xs">(Firma No Verificada ⚠️)</span>
+              )}
+              {signatureStatus === 'valid' && !decodedObject.envelope.sig && (
+                <span class="ml-2 text-gray-500 text-xs">(Sin Firma)</span>
+              )}
+            </p>
+            <p><strong>Región:</strong> {decodedObject.object.coords.region}</p>
+            <p><strong>Fecha de emisión:</strong> {new Date(decodedObject.envelope.issued_at * 1000).toLocaleString()}</p>
+            {decodedObject.object.payload?.title && (
+                 <p><strong>Título:</strong> {decodedObject.object.payload.title}</p>
+            )}
+            {decodedObject.object.payload?.content && (
+                 <p><strong>Contenido (extracto):</strong> {decodedObject.object.payload.content.substring(0, 150)}{decodedObject.object.payload.content.length > 150 ? '...' : ''}</p>
+            )}
+          </div>
+
+          <hr class="border-neutral-700 my-6" />
+
+          <h3 class="text-lg text-blue-300 mb-3">Reporte de Interpretación:</h3>
+          <div class="bg-neutral-900 text-neutral-200 p-4 rounded overflow-x-auto text-sm leading-relaxed mb-6">
+            {interpretationResult.map((line: string) => (
+              <p class={line.startsWith('[OPERADOR]') ? 'text-yellow-400' : line.startsWith('[VERIFICACIÓN] Firma presente') ? 'text-green-400' : line.startsWith('[VERIFICACIÓN] Objeto sin firmar') ? 'text-gray-400' : 'text-neutral-200'}>
+                {line}
+              </p>
+            ))}
+            {interpretationResult.length === 0 && (
+              <p class="text-neutral-400">No hay operadores específicos que interpretar o el objeto no tiene 'ops'.</p>
+            )}
+          </div>
+
+          <h3 class="text-lg text-blue-300 mb-2">JSON Completo del Objeto:</h3>
+          <pre class="bg-neutral-900 text-green-400 p-4 rounded overflow-x-auto text-sm leading-relaxed">
+{JSON.stringify(decodedObject, null, 2)}
+          </pre>
+        </article>
+      )}
+    </main>
+  </body>
+</html>
